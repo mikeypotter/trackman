@@ -1,0 +1,11 @@
+README.md
+setup.py
+trackman/__init__.py
+trackman/auth.py
+trackman/client.py
+trackman/queries.py
+trackman.egg-info/PKG-INFO
+trackman.egg-info/SOURCES.txt
+trackman.egg-info/dependency_links.txt
+trackman.egg-info/requires.txt
+trackman.egg-info/top_level.txt
