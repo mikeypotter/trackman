@@ -71,6 +71,11 @@ query ActivityList($take: Int, $skip: Int, $activityKinds: [ActivityKind!], $inc
           time
           strokeCount
         }
+        ... on ShotAnalysisSessionActivity {
+          id
+          time
+          strokeCount
+        }
       }
       totalCount
       pageInfo {
@@ -91,6 +96,10 @@ query ReportCourse($nodeId: ID!) {
       state
       toPar
       netToPar
+      stablefordToPar
+      stablefordPoints
+      skinsScore
+      matchScore
       grossScore
       gameType
       time
@@ -105,11 +114,7 @@ query ReportCourse($nodeId: ID!) {
             __typename
             position {
               __typename
-              imageTransformation {
-                __typename
-                x
-                y
-              }
+              imageTransformation { __typename x y }
             }
           }
         }
@@ -117,27 +122,14 @@ query ReportCourse($nodeId: ID!) {
       scorecard {
         __typename
         id
-        kind
-        holes {
-          __typename
-          id
-          holeNumber
-          par
-          shots {
-            __typename
-            id
-            shotNumber
-            clubType
-            lie
-            result
-          }
-          score
-          netScore
-          putts
-          fairwayHit
-          greenInRegulation
-        }
-        stats {
+        numberOfHolesPlayed
+        numberOfHolesToPlay
+        fairwayFirmness
+        greenFirmness
+        greenStimp
+        windMode
+        bayKind
+        stat {
           __typename
           driveTotal
           driveCount
@@ -147,8 +139,153 @@ query ReportCourse($nodeId: ID!) {
           fairwayHitLeft
           fairwayHitRight
           greenInRegulation
+          birdies
+          bogeys
+          doubleBogeys
+          eagles
+          eaglesOrBetter
+          pars
           scrambles
+          tripleBogeysOrWorse
+          numberOfPutts
           averagePuttsPerHoleDecimal
+        }
+        gameSettings {
+          __typename
+          gameScore
+          teamSize
+          gamePlay
+          gameBall
+          holes
+          mulligans
+          pins
+          puttingSettings {
+            __typename
+            autoGimmie
+            fixedPutt
+            gimmieDistance
+            puttingMode
+            twoPutt
+            isAuto
+            isManual
+            isAutoHandicap
+            isManualInput
+            isAimed
+          }
+        }
+        player {
+          __typename
+          id
+          name
+          gender
+          tee
+          picture
+          hcp
+        }
+        holes {
+          __typename
+          id
+          isPlayed
+          holeNumber
+          par
+          distance
+          strokeIndex
+          hcpStrokes
+          grossScore
+          netScore
+          stablefordPoint
+          skinsScore
+          matchScore
+          mulligans
+          putts
+          gimmeWasGiven
+          image {
+            __typename
+            width
+            height
+            url
+          }
+          pinPosition {
+            __typename
+            imageTransformation { __typename x y }
+          }
+          shots {
+            __typename
+            id
+            shotNumber
+            total
+            club
+            shotResult
+            shotsToAdd
+            finalLie
+            launchLie
+            dropPosition {
+              __typename
+              imageTransformation { __typename x y }
+            }
+            launchPosition {
+              __typename
+              imageTransformation { __typename x y }
+            }
+            finalPosition {
+              __typename
+              imageTransformation { __typename x y }
+            }
+          }
+        }
+        otherPlayers: playersScorecards(includeCurrentPlayer: false) {
+          __typename
+          id
+          player {
+            __typename
+            id
+            name
+            gender
+            tee
+            picture
+            hcp
+          }
+          holes {
+            __typename
+            id
+            isPlayed
+            holeNumber
+            par
+            distance
+            strokeIndex
+            hcpStrokes
+            grossScore
+            netScore
+            stablefordPoint
+            skinsScore
+            matchScore
+            mulligans
+            putts
+            gimmeWasGiven
+            shots {
+              __typename
+              id
+              shotNumber
+              total
+              club
+              shotResult
+              shotsToAdd
+              finalLie
+              launchLie
+              dropPosition {
+                __typename
+                imageTransformation { __typename x y }
+              }
+              launchPosition {
+                __typename
+                imageTransformation { __typename x y }
+              }
+              finalPosition {
+                __typename
+                imageTransformation { __typename x y }
+              }
+            }
+          }
         }
       }
     }
@@ -225,6 +362,10 @@ query ReportVirtualRange($nodeId: ID!) {
             hcp
             tourRadius
           }
+          ... on StrokeRectangleTarget {
+            length
+            width
+          }
         }
         measurement {
           __typename
@@ -256,6 +397,17 @@ query ReportVirtualRange($nodeId: ID!) {
           swingDirection
           impactOffset
           landingAngle
+          ballTrajectory {
+            __typename
+            kind
+            timeInterval
+            measuredTimeInterval
+            validTimeInterval
+            xFit
+            yFit
+            zFit
+            spinRateFit
+          }
         }
       }
     }
@@ -371,6 +523,112 @@ query ProfileStats {
       par4Count: numberOfHolesPlayed(holeTypes: PAR4_HOLES)
       par5GrossScore: grossScore(holeTypes: PAR5_HOLES)
       par5Count: numberOfHolesPlayed(holeTypes: PAR5_HOLES)
+    }
+  }
+}
+"""
+
+REPORT_SHOT_ANALYSIS = """
+query ReportShotAnalysis($nodeId: ID!) {
+  node(id: $nodeId) {
+    __typename
+    ... on ShotAnalysisSessionActivity {
+      id
+      kind
+      time
+      strokeCount
+      strokes {
+        __typename
+        ball
+        club
+        time
+        tags {
+          __typename
+          origin
+          group
+          value
+        }
+        normalizedMeasurement {
+          __typename
+          id
+          kind
+          time
+          teePosition
+          attackAngle
+          faceToPath
+          clubPath
+          clubSpeed
+          ballSpeed
+          spinAxis
+          spinRate
+          smashFactor
+          carry
+          carrySide
+          total
+          totalSide
+          side
+          curve
+          landingAngle
+          launchAngle
+          launchDirection
+          maxHeight
+          smashIndex
+          spinIndex
+          ballSpeedDifference
+          spinRateDifference
+          ballTrajectory {
+            __typename
+            kind
+            timeInterval
+            measuredTimeInterval
+            validTimeInterval
+            xFit
+            yFit
+            zFit
+            spinRateFit
+          }
+        }
+        measurement {
+          __typename
+          id
+          kind
+          time
+          teePosition
+          attackAngle
+          faceToPath
+          clubPath
+          clubSpeed
+          ballSpeed
+          spinAxis
+          spinRate
+          smashFactor
+          carry
+          carrySide
+          total
+          totalSide
+          side
+          curve
+          landingAngle
+          launchAngle
+          launchDirection
+          maxHeight
+          smashIndex
+          spinIndex
+          ballSpeedDifference
+          spinRateDifference
+          ballTrajectory {
+            __typename
+            kind
+            timeInterval
+            measuredTimeInterval
+            validTimeInterval
+            xFit
+            yFit
+            zFit
+            spinRateFit
+          }
+        }
+      }
     }
   }
 }
