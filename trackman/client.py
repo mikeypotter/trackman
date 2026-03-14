@@ -194,10 +194,17 @@ class TrackmanClient:
             include_hidden: Include hidden activities.
 
         Returns:
-            List of activity dicts. CoursePlayActivity items include:
-                id, time, state, toPar, grossScore, course.displayName, scorecard.id
-            VirtualRangeSessionActivity items include:
-                id, time, strokeCount
+            List of activity dicts. Notable fields by type:
+                CoursePlayActivity:        id, time, toPar, grossScore, course.displayName, scorecard.id
+                VirtualRangeSessionActivity:  id, time, strokeCount
+                ShotAnalysisSessionActivity:  id, time, strokeCount
+                RangePracticeActivity:     id, time, strokeCount, location.name
+                RangeFindMyDistanceActivity:  id, time, strokeCount, location.name
+                RangeBullsEyeActivity:     id, time, youWon, youPlaced, location.name
+
+            Note: RangePracticeActivity and RangeFindMyDistanceActivity use
+            ``numberOfStrokes`` in the raw API response; this method normalises
+            that to ``strokeCount`` for consistency.
         """
         variables = {
             "take": take,
@@ -206,10 +213,20 @@ class TrackmanClient:
             "includeHidden": include_hidden,
         }
         data = self._graphql(queries.ACTIVITY_LIST, variables=variables, operation_name="ActivityList")
-        return data["me"]["activities"]["items"]
+        items = data["me"]["activities"]["items"]
+        # Normalise numberOfStrokes → strokeCount for range activity types
+        for item in items:
+            if "numberOfStrokes" in item and "strokeCount" not in item:
+                item["strokeCount"] = item["numberOfStrokes"]
+        return items
 
     def get_all_activities(self, kinds: Optional[list[str]] = None) -> list[dict]:
-        """Paginate through all activities and return the full list."""
+        """Paginate through all activities and return the full list.
+
+        Known kinds: COURSE_PLAY, VIRTUAL_RANGE, SHOT_ANALYSIS,
+        RANGE_PRACTICE, RANGE_FIND_MY_DISTANCE, RANGE_BULLS_EYE.
+        Pass None to retrieve all kinds.
+        """
         results = []
         skip = 0
         take = 50

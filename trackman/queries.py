@@ -71,6 +71,31 @@ query ActivityList($take: Int, $skip: Int, $activityKinds: [ActivityKind!], $inc
           time
           strokeCount
         }
+        ... on ShotAnalysisSessionActivity {
+          id
+          time
+          strokeCount
+        }
+        ... on RangePracticeActivity {
+          id
+          time
+          numberOfStrokes
+          location { name }
+        }
+        ... on RangeFindMyDistanceActivity {
+          id
+          time
+          numberOfStrokes
+          location { name }
+        }
+        ... on RangeBullsEyeActivity {
+          id
+          time
+          youWon
+          youPlaced
+          didEndInTie
+          location { name }
+        }
       }
       totalCount
       pageInfo {
