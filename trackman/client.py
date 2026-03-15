@@ -21,6 +21,9 @@ Usage:
     # Get practice session with all strokes
     practice = client.get_practice_session("VmlydHVhbFJhbmdlU2Vzc2lvbkFjdGl2aXR5...")
 
+    # Get shot analysis session (Trackman Pro/Studio) with normalized + raw measurements
+    analysis = client.get_shot_analysis_session("U2hvdEFuYWx5c2lzU2Vzc2lvbkFjdGl2aXR5...")
+
     # Get handicap record
     hcp = client.get_handicap()
 
@@ -189,7 +192,7 @@ class TrackmanClient:
         Args:
             take:           Number of activities to return (max 100).
             skip:           Offset for pagination.
-            kinds:          Filter by kind, e.g. ["COURSE_PLAY", "VIRTUAL_RANGE"].
+            kinds:          Filter by kind, e.g. ["COURSE_PLAY", "VIRTUAL_RANGE", "SHOT_ANALYSIS"].
                             Pass None for all.
             include_hidden: Include hidden activities.
 
@@ -247,8 +250,24 @@ class TrackmanClient:
         """
         Returns full round detail for a CoursePlayActivity.
 
-        Includes per-hole data: score, par, shots, fairwayHit, GIR, putts.
-        Also includes aggregate round stats (driveAverage, FIR counts, etc.)
+        Top-level fields: id, kind, state, toPar, netToPar, grossScore, gameType, time,
+            stablefordToPar, stablefordPoints, skinsScore, matchScore, course, scorecard.
+
+        scorecard fields: numberOfHolesPlayed, numberOfHolesToPlay, fairwayFirmness,
+            greenFirmness, greenStimp, windMode, bayKind, stat, gameSettings, player,
+            holes, otherPlayers.
+
+        Per-hole fields: holeNumber, par, distance, strokeIndex, hcpStrokes, grossScore,
+            netScore, stablefordPoint, putts, mulligans, gimmeWasGiven, isPlayed,
+            skinsScore, matchScore, image, pinPosition, shots.
+
+        Per-shot fields: shotNumber, total, club, shotResult, shotsToAdd, finalLie,
+            launchLie, launchPosition, finalPosition, dropPosition.
+
+        Aggregate stat fields: driveAverage, driveMax, driveCount, fairwayHitFairway,
+            fairwayHitLeft, fairwayHitRight, greenInRegulation, birdies, bogeys,
+            doubleBogeys, eagles, eaglesOrBetter, pars, scrambles, tripleBogeysOrWorse,
+            numberOfPutts, averagePuttsPerHoleDecimal.
 
         Args:
             activity_id: The GraphQL node ID of the CoursePlayActivity.
@@ -313,12 +332,19 @@ class TrackmanClient:
         """
         Returns a full virtual range session with per-stroke ball data.
 
-        Each stroke includes:
-            club, targetDistance, measurement.carryActual, measurement.totalActual,
-            measurement.ballSpeed, measurement.clubSpeed, measurement.smashFactor,
-            measurement.spinRate, measurement.launchAngle, measurement.faceAngle,
-            measurement.clubPath, measurement.attackAngle, measurement.faceToPath,
-            and the full ballTrajectory polynomial fit.
+        Top-level fields: id, kind, time, strokeCount, strokes.
+
+        Per-stroke fields: club, targetDistance, target (type, distance; for circle
+            targets: radius, hcp, tourRadius; for rectangle targets: length, width),
+            measurement.
+
+        Per-stroke measurement fields: id, time, kind, carryActual, totalActual,
+            clubSpeed, ballSpeed, smashFactor, spinRate, spinAxis, curve, attackAngle,
+            faceToPath, clubPath, faceAngle, launchAngle, launchDirection, maxHeight,
+            carrySideActual, totalSideActual, dynamicLoft, dynamicLie, impactHeight,
+            spinLoft, swingPlane, swingDirection, impactOffset, landingAngle,
+            ballTrajectory (kind, timeInterval, measuredTimeInterval, validTimeInterval,
+            xFit, yFit, zFit, spinRateFit).
 
         Args:
             activity_id: The GraphQL node ID of the VirtualRangeSessionActivity.
@@ -328,6 +354,38 @@ class TrackmanClient:
             queries.REPORT_VIRTUAL_RANGE,
             variables={"nodeId": activity_id},
             operation_name="ReportVirtualRange",
+        )
+        return data["node"]
+
+    def get_shot_analysis_session(self, activity_id: str) -> dict:
+        """
+        Returns a full shot analysis session with per-stroke data.
+
+        Shot analysis sessions are created on Trackman Pro/Studio units and include
+        both a raw measurement and a normalized measurement (corrected to standard
+        conditions) per stroke.
+
+        Top-level fields: id, kind, time, strokeCount, strokes.
+
+        Per-stroke fields: ball, club, time, tags (origin, group, value),
+            normalizedMeasurement, measurement.
+
+        Per-stroke measurement fields (same structure for both normalizedMeasurement
+        and measurement): id, kind, time, teePosition, attackAngle, faceToPath,
+            clubPath, clubSpeed, ballSpeed, spinAxis, spinRate, smashFactor, carry,
+            carrySide, total, totalSide, side, curve, landingAngle, launchAngle,
+            launchDirection, maxHeight, smashIndex, spinIndex, ballSpeedDifference,
+            spinRateDifference, ballTrajectory (kind, timeInterval,
+            measuredTimeInterval, validTimeInterval, xFit, yFit, zFit, spinRateFit).
+
+        Args:
+            activity_id: The GraphQL node ID of the ShotAnalysisSessionActivity.
+                         Looks like "U2hvdEFuYWx5c2lzU2Vzc2lvbkFjdGl2aXR5Cm..."
+        """
+        data = self._graphql(
+            queries.REPORT_SHOT_ANALYSIS,
+            variables={"nodeId": activity_id},
+            operation_name="ReportShotAnalysis",
         )
         return data["node"]
 
