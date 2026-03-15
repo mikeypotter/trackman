@@ -46,14 +46,54 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _get_csrf_token(session: requests.Session, login_url: str) -> str:
-    """Load the login page and extract the CSRF token."""
+def _get_login_form(session: requests.Session, login_url: str) -> tuple[str, str]:
+    """
+    Load the login page and return (csrf_token, form_action_url).
+
+    The HTML <form action="..."> carries extra query params that differ from
+    the GET URL and must be used as the POST target.
+    """
     resp = session.get(login_url, allow_redirects=True)
     resp.raise_for_status()
-    match = re.search(r'name="__RequestVerificationToken"[^>]+value="([^"]+)"', resp.text)
-    if not match:
+    token_match = re.search(
+        r'name="__RequestVerificationToken"[^>]+value="([^"]+)"', resp.text
+    )
+    if not token_match:
         raise ValueError("Could not find CSRF token on login page")
-    return match.group(1)
+    action_match = re.search(r'<form[^>]+action="([^"]+)"', resp.text)
+    if action_match:
+        action = action_match.group(1).replace("&amp;", "&")
+        if action.startswith("/"):
+            action = f"{AUTH_BASE}{action}"
+    else:
+        action = login_url
+    return token_match.group(1), action
+
+
+def _follow_redirects_to_code(session: requests.Session, url: str) -> str:
+    """
+    Manually follow HTTP redirects until we hit the custom-scheme redirect URI
+    (dk.trackman.range://oauth?code=...) and return the auth code.
+
+    requests cannot follow custom-scheme URIs, so we stop just before that step
+    and extract the code from the Location header.
+    """
+    for _ in range(20):  # safety cap
+        resp = session.get(url, allow_redirects=False)
+        location = resp.headers.get("Location", "")
+        if location.startswith(REDIRECT_URI):
+            parsed = urlparse(location)
+            qs = parse_qs(parsed.query)
+            if "code" in qs:
+                return qs["code"][0]
+            raise ValueError(f"Redirect to {REDIRECT_URI!r} had no 'code' param")
+        if resp.is_redirect and location:
+            if location.startswith("/"):
+                location = f"{AUTH_BASE}{location}"
+            url = location
+            continue
+        break
+    raise ValueError("Could not locate authorization code in redirect chain")
 
 
 def login(email: str, password: str) -> TokenSet:
@@ -91,17 +131,17 @@ def login(email: str, password: str) -> TokenSet:
     }
     auth_url = f"{AUTH_BASE}/connect/authorize?" + urlencode(auth_params)
 
-    # Follow redirect chain to get the login page URL (with returnUrl baked in)
+    # Follow redirect chain to land on the login page
     resp = session.get(auth_url, allow_redirects=True)
     login_page_url = resp.url  # final URL after redirects
 
-    # Step 2: Extract CSRF token from the login form
-    csrf = _get_csrf_token(session, login_page_url)
+    # Step 2: Extract CSRF token and the form's action URL (which carries extra
+    # query params that differ from the GET URL and are required for the POST).
+    csrf, post_url = _get_login_form(session, login_page_url)
 
-    # Step 3: POST credentials
-    # Build the login POST URL (same path as login page but as POST)
-    post_url = login_page_url.replace("/Account/Login", "/Account/Login")
-    # The returnUrl is in the query string — keep it
+    # Step 3: POST credentials — do NOT follow redirects automatically because
+    # the chain eventually hits a custom-scheme URI (dk.trackman.range://oauth)
+    # that requests cannot handle.
     login_resp = session.post(
         post_url,
         data={
@@ -110,33 +150,21 @@ def login(email: str, password: str) -> TokenSet:
             "Captcha": "",
             "__RequestVerificationToken": csrf,
         },
-        allow_redirects=True,
+        allow_redirects=False,
     )
 
-    # Step 4: Extract auth code from the final redirect URL
-    # After login the server redirects to our redirect_uri with ?code=...
-    # requests can't follow custom-scheme URIs, so we look for it in the history
-    code = None
-    for r in login_resp.history + [login_resp]:
-        location = r.headers.get("Location", "")
-        if location.startswith(REDIRECT_URI) or "code=" in location:
-            parsed = urlparse(location)
-            qs = parse_qs(parsed.query)
-            if "code" in qs:
-                code = qs["code"][0]
-                break
-        # Also check the final response URL
-        if "code=" in r.url:
-            qs = parse_qs(urlparse(r.url).query)
-            if "code" in qs:
-                code = qs["code"][0]
-                break
-
-    if not code:
+    # Step 4: Follow the redirect chain manually until we reach the custom-scheme
+    # redirect URI containing the auth code.
+    location = login_resp.headers.get("Location", "")
+    if not location:
         raise ValueError(
-            "Login failed: could not extract authorization code. "
-            "Check your credentials or whether Trackman requires a CAPTCHA."
+            "Login failed: server did not redirect after credential POST. "
+            "Check your credentials."
         )
+    if location.startswith("/"):
+        location = f"{AUTH_BASE}{location}"
+
+    code = _follow_redirects_to_code(session, location)
 
     # Step 5: Exchange code for tokens
     token_resp = session.post(
